@@ -1,12 +1,17 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   ArrowDownRight, ArrowRight, Menu, X, Building2, Factory, ShieldCheck,
   Ruler, HardHat, MapPin, CheckCircle2, Phone, Mail, MessageCircle,
-  MoveUpRight, Wrench, Layers3, Users, Award, Globe2, ChevronRight
+  MoveUpRight, Wrench, Layers3, Users, Award, Globe2, ChevronRight, ChevronLeft
 } from 'lucide-react'
-import { siteData, services, sectors, projectLocations, clientExperience } from './data/siteData'
+import { siteData, services, sectors, projectLocations, clientExperience, aboutImages } from './data/siteData'
 
 const image = (url) => ({ backgroundImage: `linear-gradient(90deg, rgba(12,18,26,.30), rgba(12,18,26,.08)), url("${url}")` })
+
+// lucide-react has no brand icons, so the WhatsApp logo is inlined.
+function WhatsAppIcon({ size = 16 }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.14-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.61-.92-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.08 1.76-.72 2.01-1.41.25-.69.25-1.29.17-1.41-.07-.12-.27-.2-.57-.35zM12.05 21.78h-.01a9.9 9.9 0 0 1-5.03-1.38l-.36-.21-3.74.98 1-3.65-.24-.37a9.86 9.86 0 0 1-1.51-5.26c0-5.45 4.44-9.88 9.9-9.88a9.82 9.82 0 0 1 6.99 2.9 9.82 9.82 0 0 1 2.89 6.99c0 5.45-4.44 9.88-9.89 9.88zM20.52 3.45A11.8 11.8 0 0 0 12.05 0C5.5 0 .16 5.34.16 11.89c0 2.1.55 4.14 1.59 5.95L.06 24l6.3-1.65a11.88 11.88 0 0 0 5.68 1.45h.01c6.55 0 11.89-5.34 11.89-11.89 0-3.18-1.24-6.16-3.48-8.46z"/></svg>
+}
 
 function Header() {
   const [open, setOpen] = useState(false)
@@ -26,6 +31,29 @@ function Header() {
   </header>
 }
 
+function AboutSlider({ images }) {
+  const [index, setIndex] = useState(0)
+  const [paused, setPaused] = useState(false)
+  const count = images.length
+
+  useEffect(() => {
+    if (paused || count < 2) return
+    const id = setInterval(() => setIndex((i) => (i + 1) % count), 3000)
+    return () => clearInterval(id)
+  }, [paused, count])
+
+  return <div className="about-photo about-slider" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+    <div className="about-slider-track" style={{ transform: `translateX(-${index * 100}%)` }}>
+      {images.map((url) => <div className="about-slide" key={url} style={image(url)}></div>)}
+    </div>
+    {count > 1 && <>
+      <button type="button" className="about-slider-nav prev" aria-label="Previous image" onClick={() => setIndex((i) => (i - 1 + count) % count)}><ChevronLeft size={22}/></button>
+      <button type="button" className="about-slider-nav next" aria-label="Next image" onClick={() => setIndex((i) => (i + 1) % count)}><ChevronRight size={22}/></button>
+    </>}
+    {count > 1 && <div className="about-slider-dots">{images.map((url, i) => <button key={url} type="button" className={i === index ? 'active' : ''} aria-label={`Show image ${i + 1}`} onClick={() => setIndex(i)}/>)}</div>}
+  </div>
+}
+
 function SectionHeading({ eyebrow, title, text, light = false }) {
   return <div className={`section-heading ${light ? 'light' : ''}`}>
     <span className="eyebrow">{eyebrow}</span>
@@ -42,27 +70,36 @@ function App() {
   const phoneHref = phoneReady ? `tel:${siteData.phone}` : '#contact'
   const whatsappHref = whatsappReady ? `https://wa.me/${siteData.whatsapp.replace(/\D/g, '')}` : '#contact'
 
-  function handleContactSubmit(e) {
+  const [status, setStatus] = useState('idle')
+
+  async function handleContactSubmit(e) {
     e.preventDefault()
-    const form = new FormData(e.currentTarget)
-    const subject = encodeURIComponent(`Project enquiry from ${form.get('name')}`)
-    const body = encodeURIComponent(
-      `Name: ${form.get('name')}\\nCompany: ${form.get('company') || 'Not provided'}\\nPhone: ${form.get('phone')}\\nProject type: ${form.get('project')}\\nMessage: ${form.get('message')}`
-    )
-    if (emailReady) window.location.href = `mailto:${siteData.email}?subject=${subject}&body=${body}`
-    else window.alert('Please add your business email in src/data/siteData.js to enable enquiry submissions.')
+    const formEl = e.currentTarget
+    setStatus('sending')
+    try {
+      const res = await fetch('/api/enquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.fromEntries(new FormData(formEl))),
+      })
+      if (!res.ok) throw new Error('Request failed')
+      formEl.reset()
+      setStatus('success')
+    } catch {
+      setStatus('error')
+    }
   }
 
   return <>
     <Header/>
     <main>
       <section className="hero" id="home">
-        <div className="hero-image" style={image('https://images.unsplash.com/photo-1516937941344-00b4e0337589?auto=format&fit=crop&w=2200&q=90')}></div>
+        <div className="hero-image" style={image('https://plus.unsplash.com/premium_photo-1664300608028-15bcc4da4996?auto=format&fit=crop&w=2200&q=85')}></div>
         <div className="hero-grid"></div>
         <div className="container hero-content">
           <div className="hero-copy">
             <div className="eyebrow eyebrow-gold"><span className="eyebrow-line"></span> FABRICATION · ENGINEERING · INSTALLATION</div>
-            <h1>Building strength.<br/><span>Shaping possibilities.</span></h1>
+            <h1>Building strength.<br/><span>Within 3 Days</span></h1>
             <p className="hero-lede">End-to-end fabrication and engineering solutions for industrial, infrastructure, commercial and residential projects.</p>
             <div className="hero-actions">
               <a href="#services" className="button button-gold">Explore our capabilities <ArrowRight size={17}/></a>
@@ -87,7 +124,7 @@ function App() {
       <section className="section about-section" id="about">
         <div className="container about-grid">
           <div className="about-visual">
-            <div className="about-photo" style={image('https://images.unsplash.com/photo-1531834685032-c34bf0d84c77?auto=format&fit=crop&w=1200&q=85')}></div>
+            <AboutSlider images={aboutImages}/>
             <div className="photo-caption"><span className="caption-icon"><Ruler size={20}/></span><span><b>From concept to completion</b><small>One coordinated fabrication journey</small></span></div>
             <div className="outline-square"></div>
           </div>
@@ -163,7 +200,6 @@ function App() {
             {/* <h3>Industries & partner networks</h3> */}
             {/* <p className="panel-intro">Selected client and partner experience as listed in the company profile.</p> */}
             {clientExperience.map(item=><div className="client-row" key={item.sector}><span>{item.sector}</span><p>{item.names}</p></div>)}
-            <p className="small-disclaimer">Client and organization names should be confirmed for public use before launch.</p>
           </div>
         </div>
       </section>
@@ -179,12 +215,11 @@ function App() {
         <div className="container contact-grid">
           <div className="contact-copy">
             <SectionHeading eyebrow="START A CONVERSATION" title={<>Have a project<br/><span className="gold-text">in mind?</span></>} text="Tell us about your industrial, infrastructure, commercial or residential fabrication requirements."/>
-            <div className="contact-detail"><span><MapPin size={19}/></span><div><b>Visit / Service location</b><p>{siteData.location}</p></div></div>
-            <div className="contact-detail"><span><Phone size={19}/></span><div><b>Call our team</b><p>{phoneReady ? siteData.phone : 'Phone number to be added'}</p></div></div>
-            <div className="contact-detail"><span><Mail size={19}/></span><div><b>Email enquiries</b><p>{emailReady ? siteData.email : 'Email address to be added'}</p></div></div>
+            <a className="contact-detail" href={siteData.mapsUrl} target="_blank" rel="noreferrer"><span><MapPin size={19}/></span><div><b>Visit our Workshop</b><p>{siteData.address}</p></div></a>
+            <a className="contact-detail" href={phoneHref}><span><Phone size={19}/></span><div><b>Call Us</b><p>{phoneReady ? siteData.phone : 'Phone number to be added'}</p></div></a>
+            <a className="contact-detail" href={emailHref}><span><Mail size={19}/></span><div><b>Email To</b><p>{emailReady ? siteData.email : 'Email address to be added'}</p></div></a>
             <div className="contact-actions">
-              <a className="button button-dark" href={phoneHref}><Phone size={16}/> Call us</a>
-              <a className="button button-outline" href={whatsappHref} target={whatsappReady ? '_blank' : undefined} rel="noreferrer"><MessageCircle size={16}/> WhatsApp</a>
+              <a className="button button-dark" href={whatsappHref} target={whatsappReady ? '_blank' : undefined} rel="noreferrer"><WhatsAppIcon size={16}/> WhatsApp</a>
             </div>
           </div>
           <form className="contact-form" onSubmit={handleContactSubmit}>
@@ -198,8 +233,9 @@ function App() {
               <label>Project type<select name="project" defaultValue="" required><option value="" disabled>Select a service</option><option>Industrial sheds / structures</option><option>M.S. fabrication</option><option>S.S. fabrication</option><option>Architectural metal solutions</option><option>Site fabrication & installation</option><option>Other / not sure yet</option></select></label>
             </div>
             <label>Project details<textarea name="message" required rows="4" placeholder="Tell us about your project, location and requirements..."/></label>
-            <button type="submit" className="button button-gold submit-button">Prepare enquiry <ArrowRight size={17}/></button>
-            <small className="form-note">This form opens your email application after your business email is configured. It does not store submissions on a server.</small>
+            <button type="submit" className="button button-gold submit-button" disabled={status === 'sending'}>{status === 'sending' ? 'Sending...' : 'Send enquiry'} <ArrowRight size={17}/></button>
+            {status === 'success' && <p className="form-note" role="status" style={{ color: '#15803d', fontWeight: 600 }}>Thank you! Your enquiry has been received. Our team will contact you shortly.</p>}
+            {status === 'error' && <p className="form-note" role="alert" style={{ color: '#b91c1c', fontWeight: 600 }}>Sorry, we could not send your enquiry. Please try again or call us directly.</p>}
           </form>
         </div>
       </section>
@@ -216,7 +252,7 @@ function App() {
       </div>
       <div className="container footer-bottom"><span>© {new Date().getFullYear()} Kanav Engineering. All rights reserved.</span><span>{siteData.location}</span></div>
     </footer>
-    <a className="floating-contact" href={whatsappHref} aria-label="Contact via WhatsApp"><MessageCircle size={22}/></a>
+    <a className="floating-contact" href={whatsappHref} aria-label="Contact via WhatsApp"><WhatsAppIcon size={24}/></a>
   </>
 }
 
